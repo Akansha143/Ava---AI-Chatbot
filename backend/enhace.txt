@@ -1,0 +1,1070 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import logging
+import time
+import os
+import re
+import json
+import random
+from datetime import datetime
+from collections import defaultdict
+import sqlite3
+import threading
+import difflib
+import unicodedata
+from functools import lru_cache
+import math
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
+class AdvancedAvaAIBrain:
+    def __init__(self):
+        self.conversation_history = []
+        self.knowledge_base = {}
+        self.user_preferences = {}
+        self.context_memory = {}
+        self.word_associations = defaultdict(list)
+        self.response_patterns = {}
+        self.learning_data = defaultdict(int)
+        self.last_intent = None
+        self.last_topic = None
+        self.conversation_context = []
+        self.synonyms = {}
+        self.advanced_patterns = {}
+        
+        # Thread lock for database operations
+        self.db_lock = threading.Lock()
+        
+        # Initialize database for persistent learning
+        self.init_database()
+        
+        # Load comprehensive knowledge base
+        self.load_comprehensive_knowledge_base()
+        
+        # Load response patterns
+        self.load_response_patterns()
+        
+        # Load synonyms and advanced patterns
+        self.load_synonyms()
+        self.load_advanced_patterns()
+        
+        logger.info("🤖 Advanced Ava AI Brain v4.0 initialized successfully")
+
+    def init_database(self):
+        """Initialize SQLite database for learning"""
+        try:
+            self.conn = sqlite3.connect('ava_memory.db', check_same_thread=False)
+            cursor = self.conn.cursor()
+            
+            # Create tables for learning
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_input TEXT,
+                    ai_response TEXT,
+                    context TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    user_feedback INTEGER DEFAULT 0,
+                    confidence_score REAL DEFAULT 0.0
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS knowledge (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT,
+                    question TEXT,
+                    answer TEXT,
+                    confidence REAL DEFAULT 1.0,
+                    usage_count INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
+                    name TEXT,
+                    preferences TEXT,
+                    conversation_style TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS learning_patterns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern TEXT,
+                    response_type TEXT,
+                    success_rate REAL DEFAULT 0.0,
+                    usage_count INTEGER DEFAULT 0
+                )
+            ''')
+            
+            self.conn.commit()
+            logger.info("✅ Advanced database initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Database initialization error: {e}")
+
+    def normalize_text(self, text):
+        """Advanced text normalization"""
+        if not text:
+            return ""
+        
+        # Convert to lowercase
+        text = text.lower()
+        
+        # Remove accents and special characters
+        text = unicodedata.normalize('NFD', text)
+        text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+        
+        # Handle common variations
+        replacements = {
+            'whats': 'what is',
+            'wheres': 'where is',
+            'whos': 'who is',
+            'hows': 'how is',
+            'youre': 'you are',
+            'im': 'i am',
+            'dont': 'do not',
+            'cant': 'cannot',
+            'wont': 'will not',
+            'isnt': 'is not',
+            'arent': 'are not',
+            'wasnt': 'was not',
+            'werent': 'were not',
+            'hasnt': 'has not',
+            'havent': 'have not',
+            'hadnt': 'had not',
+            'shouldnt': 'should not',
+            'wouldnt': 'would not',
+            'couldnt': 'could not',
+            'u': 'you',
+            'ur': 'your',
+            'r': 'are',
+            'n': 'and',
+            '&': 'and',
+            '+': 'plus',
+            'x': 'times',
+            '*': 'times',
+            '/': 'divided by',
+            '÷': 'divided by',
+            '×': 'times'
+        }
+        
+        for old, new in replacements.items():
+            text = re.sub(r'\b' + re.escape(old) + r'\b', new, text)
+        
+        # Remove extra spaces and punctuation
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+
+    def load_synonyms(self):
+        """Load synonyms for better understanding"""
+        self.synonyms = {
+            'big': ['large', 'huge', 'massive', 'enormous', 'giant', 'vast', 'immense'],
+            'small': ['tiny', 'little', 'mini', 'miniature', 'minute', 'petite'],
+            'fast': ['quick', 'rapid', 'swift', 'speedy', 'fleet', 'hasty'],
+            'slow': ['sluggish', 'gradual', 'leisurely', 'unhurried'],
+            'smart': ['intelligent', 'clever', 'brilliant', 'wise', 'bright'],
+            'good': ['excellent', 'great', 'wonderful', 'amazing', 'fantastic', 'superb'],
+            'bad': ['terrible', 'awful', 'horrible', 'dreadful', 'poor'],
+            'help': ['assist', 'aid', 'support', 'guide'],
+            'tell': ['explain', 'describe', 'inform', 'share', 'say'],
+            'show': ['display', 'demonstrate', 'present', 'reveal'],
+            'find': ['locate', 'discover', 'search', 'identify'],
+            'know': ['understand', 'comprehend', 'realize', 'recognize'],
+            'think': ['believe', 'consider', 'suppose', 'assume'],
+            'want': ['need', 'require', 'desire', 'wish'],
+            'give': ['provide', 'offer', 'supply', 'present'],
+            'make': ['create', 'build', 'construct', 'produce'],
+            'country': ['nation', 'state', 'kingdom', 'republic'],
+            'animal': ['creature', 'beast', 'wildlife', 'fauna'],
+            'place': ['location', 'spot', 'area', 'region', 'site']
+        }
+
+    def load_advanced_patterns(self):
+        """Load advanced conversation patterns"""
+        self.advanced_patterns = {
+            'comparison': [
+                r'which is (bigger|larger|smaller|faster|slower|better|worse)',
+                r'(compare|difference between)',
+                r'(versus|vs|compared to)',
+                r'(more|less) than'
+            ],
+            'causation': [
+                r'why (do|does|is|are|did|was|were)',
+                r'what causes',
+                r'how (do|does|is|are|did|was|were)',
+                r'what makes'
+            ],
+            'definition': [
+                r'what is (a|an|the)?',
+                r'define',
+                r'meaning of',
+                r'explain'
+            ],
+            'location': [
+                r'where is',
+                r'location of',
+                r'found in',
+                r'located'
+            ],
+            'quantity': [
+                r'how many',
+                r'how much',
+                r'number of',
+                r'amount of'
+            ],
+            'time': [
+                r'when (did|does|is|are|was|were)',
+                r'what time',
+                r'how long'
+            ],
+            'process': [
+                r'how to',
+                r'steps to',
+                r'process of',
+                r'way to'
+            ]
+        }
+
+    def load_comprehensive_knowledge_base(self):
+        """Load massive comprehensive knowledge base with advanced content"""
+        self.knowledge_base = {
+            # Advanced Mathematics
+            'math': {
+                'basic_operations': {
+                    '2+2': '2 + 2 = 4',
+                    '5+3': '5 + 3 = 8',
+                    '10-4': '10 - 4 = 6',
+                    '6*7': '6 × 7 = 42',
+                    '15/3': '15 ÷ 3 = 5',
+                    '3*3': '3 × 3 = 9',
+                    '8+7': '8 + 7 = 15',
+                    '20-5': '20 - 5 = 15',
+                    '12*12': '12 × 12 = 144',
+                    '100/4': '100 ÷ 4 = 25',
+                    '25*4': '25 × 4 = 100',
+                    '144/12': '144 ÷ 12 = 12',
+                    '7*8': '7 × 8 = 56',
+                    '9*9': '9 × 9 = 81',
+                    '11*11': '11 × 11 = 121'
+                },
+                'advanced_operations': {
+                    'square_root': 'Square root (√): √9 = 3, √16 = 4, √25 = 5, √36 = 6, √49 = 7, √64 = 8, √81 = 9, √100 = 10',
+                    'powers': 'Powers: 2² = 4, 2³ = 8, 2⁴ = 16, 3² = 9, 3³ = 27, 4² = 16, 5² = 25, 10² = 100',
+                    'percentages': 'Percentages: 50% = 0.5 = 1/2, 25% = 0.25 = 1/4, 75% = 0.75 = 3/4, 10% = 0.1 = 1/10'
+                },
+                'pi': 'Pi (π) is approximately 3.14159265359, representing the ratio of a circle\'s circumference to its diameter. It\'s an irrational number used in geometry, trigonometry, and physics.',
+                'fibonacci': 'The Fibonacci sequence: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144... Each number equals the sum of the previous two. Found in nature: flower petals, pine cones, shells.',
+                'prime_numbers': 'Prime numbers have exactly two factors (1 and themselves): 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47... 2 is the only even prime.',
+                'calculus': 'Calculus studies continuous change. Derivatives measure rates of change (speed, acceleration). Integrals measure accumulation (area under curves, total distance).',
+                'geometry': 'Geometry studies shapes: Triangle (3 sides), Square (4 equal sides), Rectangle (4 sides, opposite equal), Circle (all points equidistant from center), Pentagon (5 sides).',
+                'algebra': 'Algebra uses letters (variables) to represent numbers. Example: x + 5 = 10, so x = 5. Helps solve problems with unknown values.',
+                'statistics': 'Statistics analyzes data: Mean (average), Median (middle value), Mode (most frequent), Range (highest - lowest value).'
+            },
+            
+            # Enhanced Geography
+            'geography': {
+                'countries': [
+                    '🇮🇳 India - South Asia, Capital: New Delhi, Population: 1.4+ billion, Currency: Rupee',
+                    '🇺🇸 United States - North America, Capital: Washington D.C., 50 states, Currency: Dollar',
+                    '🇨🇳 China - East Asia, Capital: Beijing, Most populous country, Currency: Yuan',
+                    '🇧🇷 Brazil - South America, Capital: Brasília, Largest in South America, Currency: Real',
+                    '🇷🇺 Russia - Eurasia, Capital: Moscow, Largest country by area, Currency: Ruble',
+                    '🇯🇵 Japan - East Asia, Capital: Tokyo, Island nation, Currency: Yen',
+                    '🇩🇪 Germany - Central Europe, Capital: Berlin, Economic powerhouse, Currency: Euro',
+                    '🇫🇷 France - Western Europe, Capital: Paris, Famous for culture, Currency: Euro',
+                    '🇬🇧 United Kingdom - Europe, Capital: London, Island nation, Currency: Pound',
+                    '🇦🇺 Australia - Oceania, Capital: Canberra, Continent-country, Currency: Dollar',
+                    '🇨🇦 Canada - North America, Capital: Ottawa, Second largest by area, Currency: Dollar',
+                    '🇲🇽 Mexico - North America, Capital: Mexico City, Rich culture, Currency: Peso',
+                    '🇮🇹 Italy - Southern Europe, Capital: Rome, Boot-shaped peninsula, Currency: Euro',
+                    '🇪🇸 Spain - Western Europe, Capital: Madrid, Iberian Peninsula, Currency: Euro',
+                    '🇰🇷 South Korea - East Asia, Capital: Seoul, Technological hub, Currency: Won',
+                    '🇳🇬 Nigeria - West Africa, Capital: Abuja, Most populous in Africa, Currency: Naira',
+                    '🇦🇷 Argentina - South America, Capital: Buenos Aires, Famous for tango, Currency: Peso',
+                    '🇿🇦 South Africa - Southern Africa, Capitals: Cape Town/Pretoria, Currency: Rand',
+                    '🇪🇬 Egypt - North Africa, Capital: Cairo, Ancient pyramids, Currency: Pound',
+                    '🇹🇭 Thailand - Southeast Asia, Capital: Bangkok, Land of smiles, Currency: Baht'
+                ],
+                'continents': {
+                    'asia': 'Asia: Largest continent (30% of land), 4.6 billion people, Highest point: Mount Everest, Major countries: China, India, Japan',
+                    'africa': 'Africa: Second largest, Cradle of humanity, 54 countries, Major rivers: Nile, Congo, Major desert: Sahara',
+                    'north_america': 'North America: 23 countries, Major countries: USA, Canada, Mexico, Largest city: Mexico City',
+                    'south_america': 'South America: 12 countries, Amazon rainforest, Andes mountains, Major countries: Brazil, Argentina',
+                    'europe': 'Europe: Smallest continent, 44 countries, Rich history and culture, Major rivers: Danube, Rhine',
+                    'australia': 'Australia/Oceania: Smallest continent, Unique wildlife, Great Barrier Reef, Indigenous cultures',
+                    'antarctica': 'Antarctica: Coldest continent, No permanent residents, 98% ice covered, Scientific research stations'
+                },
+                'capitals': {
+                    'tokyo': 'Tokyo, Japan - World\'s largest metropolitan area (37+ million people)',
+                    'london': 'London, UK - Financial center, Big Ben, Thames River, 9+ million people',
+                    'paris': 'Paris, France - City of Light, Eiffel Tower, Seine River, 2.2 million people',
+                    'berlin': 'Berlin, Germany - Historical significance, Brandenburg Gate, 3.7 million people',
+                    'rome': 'Rome, Italy - Eternal City, Colosseum, Vatican City nearby, 2.8 million people',
+                    'beijing': 'Beijing, China - Forbidden City, Great Wall nearby, 21+ million people',
+                    'new_delhi': 'New Delhi, India - Red Fort, India Gate, 32+ million metro area',
+                    'washington_dc': 'Washington D.C., USA - White House, Capitol Building, 700,000 people'
+                },
+                'highest_mountains': 'Mount Everest: 29,032 feet (8,849m) in Himalayas. K2: 28,251 feet. Kangchenjunga: 28,169 feet. All in Himalayas.',
+                'longest_rivers': 'Nile River: ~4,135 miles through Africa. Amazon: ~4,000 miles in South America. Yangtze: 3,915 miles in China.',
+                'largest_oceans': 'Pacific: 46% of Earth\'s water, deepest point Mariana Trench. Atlantic: 23%. Indian: 20%. Arctic: smallest.',
+                'smallest_country': 'Vatican City: 0.17 square miles (0.44 km²), population ~800. Monaco: 0.78 sq miles. Nauru: 8.1 sq miles.',
+                'deserts': 'Antarctica (largest), Sahara (largest hot), Arabian, Gobi, Kalahari, Great Victoria, Patagonian, Thar.',
+                'climate_zones': 'Tropical (hot, humid), Temperate (moderate), Arctic (cold), Desert (dry), Mediterranean (mild, dry summers).'
+            },
+            
+            # Enhanced Animals
+            'animals': {
+                'fastest_animals': {
+                    'land': 'Cheetah: 70 mph (112 km/h) in bursts, found in Africa. Can accelerate 0-60 mph in 3 seconds!',
+                    'air': 'Peregrine Falcon: 240+ mph (386 km/h) diving speed. Found worldwide. Sharp eyesight 8x better than humans.',
+                    'water': 'Black Marlin: 80 mph (129 km/h). Sailfish: 68 mph. Both are incredible ocean predators.',
+                    'insect': 'Dragonfly: 35 mph, incredible aerial maneuvers. Desert ant: fastest relative to body size.'
+                },
+                'largest_animals': {
+                    'land': 'African Elephant: 13,000 pounds, 13 feet tall. Excellent memory, complex emotions, live 60-70 years.',
+                    'water': 'Blue Whale: 100 feet long, 200 tons. Heart alone weighs 400 pounds. Largest animal ever known.',
+                    'bird': 'Ostrich: 9 feet tall, 350 pounds. Can run 43 mph. Largest eggs - 6 inches long!',
+                    'predator': 'Siberian Tiger: 660 pounds, 10 feet long. Solitary hunters, excellent swimmers.',
+                    'reptile': 'Saltwater Crocodile: 23 feet, 2,200 pounds. Strongest bite force of any animal.',
+                    'fish': 'Whale Shark: 40 feet long, filter feeder eating plankton. Gentle giants.'
+                },
+                'smartest_animals': {
+                    'dolphins': 'Dolphins: Self-aware, use tools, complex communication, recognize themselves in mirrors.',
+                    'elephants': 'Elephants: Mourn their dead, excellent memory, use tools, complex social structures.',
+                    'primates': 'Great Apes: Chimpanzees use tools, gorillas learn sign language, orangutans solve puzzles.',
+                    'octopus': 'Octopus: Problem solvers, escape artists, use tools, change color and texture.',
+                    'ravens': 'Ravens & Crows: Use tools, plan ahead, recognize faces, have regional dialects.'
+                },
+                'pets': 'Dogs: 340+ breeds, loyal companions, can learn 150+ words. Cats: Independent, 38+ breeds, purr to heal. Birds: Parrots can live 100+ years, learn speech. Fish: Goldfish remember for months, not seconds!',
+                'endangered': 'Critically Endangered: Amur Leopard (100 left), Javan Rhino (70), Cross River Gorilla (200-300). Vulnerable: Tigers (3,900), Giant Pandas (improving!).',
+                'marine_life': 'Dolphins (echolocation), Great White Sharks (6th sense for electricity), Humpback Whales (complex songs), Giant Pacific Octopus (most intelligent invertebrate).',
+                'animal_records': 'Strongest: Dung beetle (1,000x body weight). Oldest: Greenland Shark (400+ years). Loudest: Blue Whale (188 decibels). Smallest: Bumblebee Bat.',
+                'migration': 'Arctic Tern: 44,000 mile annual migration. Monarch Butterflies: 3,000 miles across generations. Gray Whales: 14,000 mile round trip.',
+                'nocturnal': 'Owls (silent flight, 270° head rotation), Bats (echolocation, only flying mammal), Raccoons (dexterous paws), Fireflies (bioluminescence).'
+            },
+            
+            # Advanced Science
+            'science': {
+                'physics': {
+                    'gravity': 'Gravity: Universal force of attraction. Earth: 9.8 m/s². Moon: 1.6 m/s² (1/6 of Earth). Discovered by Newton, explained by Einstein\'s relativity.',
+                    'light': 'Light: Electromagnetic radiation, speed 299,792,458 m/s (fastest possible). Both wave and particle. White light contains all colors.',
+                    'sound': 'Sound: Vibrations through matter. Speed: 343 m/s in air. Cannot travel through vacuum. Frequency determines pitch.',
+                    'electricity': 'Electricity: Flow of electrons. AC (alternating) vs DC (direct current). Lightning is natural electricity - up to 1 billion volts!',
+                    'magnetism': 'Magnetism: Force from moving electric charges. Earth is giant magnet. Compass points to magnetic north.',
+                    'energy': 'Energy cannot be created or destroyed, only transformed. Kinetic (motion), Potential (stored), Thermal (heat), Chemical.'
+                },
+                'chemistry': {
+                    'elements': 'Periodic Table: 118 known elements. Hydrogen (lightest), Helium (noble gas), Carbon (life\'s backbone), Oxygen (essential for breathing).',
+                    'compounds': 'Water (H₂O): 2 hydrogen + 1 oxygen. Salt (NaCl): sodium + chlorine. CO₂: carbon dioxide from breathing.',
+                    'reactions': 'Chemical reactions: Reactants → Products. Combustion (burning), Oxidation (rusting), Photosynthesis (plants make food).',
+                    'states': 'Matter states: Solid (fixed shape), Liquid (takes container shape), Gas (fills container), Plasma (ionized gas).'
+                },
+                'biology': {
+                    'photosynthesis': 'Plants use sunlight + CO₂ + H₂O → glucose + oxygen. Chlorophyll in leaves captures light. Foundation of food chains.',
+                    'dna': 'DNA: Genetic blueprint. Double helix structure. 4 bases: A-T, G-C. Humans have 23 chromosome pairs.',
+                    'evolution': 'Evolution: Species change over time through natural selection. Darwin\'s theory. Fossils provide evidence.',
+                    'cells': 'Cells: Basic life units. Prokaryotes (bacteria) vs Eukaryotes (animals, plants). Mitochondria are cellular powerhouses.',
+                    'ecosystems': 'Ecosystems: Living and non-living interact. Food chains: Producer → Primary Consumer → Secondary Consumer → Decomposer.'
+                },
+                'space': {
+                    'solar_system': 'Solar System: Sun + 8 planets. Inner rocky planets: Mercury, Venus, Earth, Mars. Outer gas giants: Jupiter, Saturn, Uranus, Neptune.',
+                    'stars': 'Stars: Nuclear furnaces fusing hydrogen to helium. Our Sun is medium-sized yellow dwarf. Largest stars are red supergiants.',
+                    'galaxies': 'Milky Way: Our galaxy, 100-400 billion stars. Nearest galaxy: Andromeda, 2.5 million light-years away.',
+                    'universe': 'Universe: 13.8 billion years old, constantly expanding. Contains ~2 trillion galaxies. 95% is dark matter/energy.'
+                },
+                'human_body': {
+                    'systems': 'Body systems: Circulatory (heart, blood), Respiratory (lungs), Digestive (stomach, intestines), Nervous (brain, nerves).',
+                    'brain': 'Brain: 86 billion neurons, uses 20% of body\'s energy. Controls thoughts, memories, emotions, movement.',
+                    'heart': 'Heart: 4 chambers, beats 100,000+ times daily, pumps 2,000 gallons blood. Cardiac muscle never tires.',
+                    'bones': 'Skeleton: 206 bones in adults (270 at birth, some fuse). Produces blood cells in bone marrow.',
+                    'senses': '5 senses: Sight (eyes detect light), Hearing (ears detect vibrations), Smell/Taste (chemical detection), Touch (pressure, temperature).'
+                }
+            },
+            
+            # Enhanced Technology
+            'technology': {
+                'artificial_intelligence': 'AI: Machines performing human-like tasks. Machine Learning: learns from data. Deep Learning: neural networks mimicking brain.',
+                'internet': 'Internet: Global network, 4.6+ billion users. Uses TCP/IP protocols. World Wide Web is just one service on internet.',
+                'computer': 'Computer: CPU (processor), RAM (temporary memory), Storage (permanent), Input/Output devices. Binary code: 0s and 1s.',
+                'smartphone': 'Smartphone: Pocket computer with touchscreen, apps, internet, GPS, camera. More powerful than 1960s room-sized computers.',
+                'programming': 'Programming: Writing instructions for computers. Languages: Python (beginner-friendly), Java (enterprise), JavaScript (web), C++ (system).',
+                'robotics': 'Robotics: Machines performing tasks autonomously. Used in manufacturing, surgery, space exploration, home assistance.',
+                'blockchain': 'Blockchain: Decentralized digital ledger. Cryptocurrency foundation. Secure, transparent, tamper-resistant transactions.',
+                'quantum_computing': 'Quantum Computing: Uses quantum mechanics. Quantum bits (qubits) can be 0, 1, or both simultaneously. Exponentially faster.',
+                'cloud_computing': 'Cloud: Remote servers providing computing services. Amazon AWS, Microsoft Azure, Google Cloud. Scalable, cost-effective.',
+                'cybersecurity': 'Cybersecurity: Protecting digital information. Encryption, firewalls, antivirus. Growing importance with digital dependence.'
+            },
+            
+            # Enhanced History
+            'history': {
+                'ancient_civilizations': {
+                    'mesopotamia': 'Mesopotamia (3500-539 BCE): "Cradle of Civilization", first cities, writing (cuneiform), wheel, laws (Hammurabi\'s Code).',
+                    'egypt': 'Ancient Egypt (3100-30 BCE): Pyramids, hieroglyphs, mummies, pharaohs. Nile River crucial for agriculture.',
+                    'greece': 'Ancient Greece (800-146 BCE): Democracy, philosophy (Socrates, Plato, Aristotle), Olympic Games, theater.',
+                    'rome': 'Roman Empire (27 BCE-476 CE): Roads, aqueducts, law system, Latin language, Christianity spread.',
+                    'china': 'Ancient China: Great Wall, paper, gunpowder, compass, silk road, Confucius teachings.',
+                    'maya': 'Maya Civilization: Advanced astronomy, calendar, writing system, pyramids in Central America.'
+                },
+                'world_wars': {
+                    'wwi': 'WWI (1914-1918): "The Great War", trench warfare, 16+ million deaths. Triggered by assassination of Archduke Franz Ferdinand.',
+                    'wwii': 'WWII (1939-1945): Deadliest conflict, 70+ million deaths. Holocaust, atomic bombs, ended with Allied victory.'
+                },
+                'revolutions': 'American Revolution (1776): Independence from Britain. French Revolution (1789): "Liberty, Equality, Fraternity". Industrial Revolution: machines, factories.',
+                'explorers': 'Christopher Columbus (Americas, 1492), Vasco da Gama (India route), Marco Polo (Silk Road), Magellan (first circumnavigation attempt).',
+                'inventions': 'Wheel (3500 BCE), Printing Press (1440), Steam Engine (1712), Telephone (1876), Light Bulb (1879), Airplane (1903), Internet (1960s-90s).',
+                'independence_movements': 'India (1947 from Britain), USA (1776), Brazil (1822), Mexico (1821), Many African nations (1950s-60s).'
+            },
+            
+            # Enhanced Health & Wellness
+            'health': {
+                'nutrition': {
+                    'macronutrients': 'Proteins (muscle building): meat, eggs, beans. Carbohydrates (energy): grains, fruits. Fats (essential): nuts, oils.',
+                    'vitamins': 'A (vision): carrots. B (energy): whole grains. C (immunity): citrus. D (bones): sunlight. E (antioxidant): nuts.',
+                    'minerals': 'Calcium (bones): dairy. Iron (blood): spinach. Potassium (heart): bananas. Zinc (immunity): meat.',
+                    'water': 'Hydration: 8+ glasses daily (2 liters). Regulates temperature, transports nutrients, removes waste.'
+                },
+                'exercise': {
+                    'benefits': 'Stronger heart, muscles, bones. Better mood (endorphins), sleep, energy. Reduces disease risk. Weight management.',
+                    'types': 'Cardio (running, swimming): heart health. Strength (weights): muscle building. Flexibility (yoga): mobility.',
+                    'recommendations': 'Adults: 150+ minutes moderate activity weekly. Children: 60 minutes daily. Mix cardio, strength, flexibility.'
+                },
+                'sleep': {
+                    'importance': 'Adults need 7-9 hours. Memory consolidation, immune boost, growth hormone, mental health.',
+                    'stages': 'NREM (light, deep sleep) and REM (dreams, brain processing). Complete cycle: 90 minutes.',
+                    'tips': 'Regular schedule, cool dark room, avoid screens before bed, comfortable mattress.'
+                },
+                'mental_health': 'Stress management: meditation, exercise, hobbies. Social connections important. Seek help when needed. Brain health through learning.',
+                'disease_prevention': 'Vaccination, hand washing, healthy diet, exercise, avoid smoking, limit alcohol, regular checkups, sun protection.'
+            },
+            
+            # Fun Facts & Trivia
+            'fun_facts': {
+                'amazing_facts': [
+                    'Honey never spoils - 3000-year-old honey found in Egyptian tombs was still edible!',
+                    'Octopuses have 3 hearts and blue blood. Two hearts pump blood to gills, one to body.',
+                    'Bananas are berries, but strawberries aren\'t! Botanically, berries have seeds inside.',
+                    'A group of flamingos is called a "flamboyance" - how fitting!',
+                    'Sharks are older than trees - sharks: 400 million years, trees: 350 million years.',
+                    'Your stomach gets entirely new lining every 3-5 days due to stomach acid.',
+                    'Cleopatra lived closer to Moon landing (1969) than pyramid construction (2580 BCE).',
+                    'There are more possible chess games than atoms in observable universe.',
+                    'Wombat poop is cube-shaped - helps prevent it from rolling away.',
+                    'A jiffy is actual time unit: 1/100th of a second in physics.'
+                ],
+                'space_facts': [
+                    'One day on Venus = 243 Earth days. Venus rotates backwards!',
+                    'Jupiter\'s Great Red Spot is a storm larger than Earth, raging 400+ years.',
+                    'Saturn would float in water - it\'s less dense than water.',
+                    'Neutron star teaspoon would weigh 6 billion tons on Earth.',
+                    'Space is completely silent - no air means no sound waves.',
+                    'Footprints on Moon will last millions of years - no wind to erase them.'
+                ],
+                'human_body_facts': [
+                    'You share 50% DNA with bananas, 60% with fruit flies, 99% with other humans.',
+                    'Your body produces 25 million new cells every second.',
+                    'Stomach acid is strong enough to dissolve razor blades.',
+                    'You lose 8 pounds of dead skin cells per year.',
+                    'Your brain uses 20% of your total energy despite being 2% of body weight.',
+                    'You blink 15-20 times per minute - over 10 million times per year!'
+                ]
+            }
+        }
+
+    @lru_cache(maxsize=1000)
+    def find_similar_words(self, word):
+        """Find similar words using cached results"""
+        similar = []
+        word_lower = word.lower()
+        
+        # Check synonyms
+        for key, synonyms in self.synonyms.items():
+            if word_lower == key or word_lower in synonyms:
+                similar.extend([key] + synonyms)
+        
+        # Check for close matches in knowledge base
+        all_words = set()
+        for category in self.knowledge_base.values():
+            if isinstance(category, dict):
+                for content in category.values():
+                    if isinstance(content, str):
+                        all_words.update(content.lower().split())
+        
+        # Find close matches
+        close_matches = difflib.get_close_matches(word_lower, all_words, n=5, cutoff=0.7)
+        similar.extend(close_matches)
+        
+        return list(set(similar))
+
+    def load_response_patterns(self):
+        """Load enhanced response patterns"""
+        self.response_patterns = {
+            'greeting': [
+                "Hello! I'm Ava, your advanced AI assistant! 🤖✨ How can I help you explore the world of knowledge today?",
+                "Hi there! Ava here, ready to dive deep into any topic you're curious about! 🌟 What interests you?",
+                "Greetings! I'm Ava, your intelligent companion. Let's discover something amazing together! 🚀",
+                "Hello! I'm Ava, equipped with vast knowledge and ready to assist! What would you like to learn? 📚"
+            ],
+            
+            'identity': [
+                "I'm Ava, your advanced AI assistant! 🤖 I'm designed with enhanced natural language processing, comprehensive knowledge across multiple domains, and the ability to understand context and nuance. I can help with math, science, geography, history, technology, and much more!",
+                "My name is Ava - an Advanced Virtual Assistant! 🧠✨ I feature sophisticated text analysis, extensive knowledge databases, and intelligent response generation. I'm here to make learning engaging and accessible!",
+                "I'm Ava, your personal AI companion! 🌟 Built with cutting-edge language understanding, I can process complex queries, maintain conversation context, and provide detailed explanations across numerous subjects!"
+            ],
+            
+            'creator': [
+                "I was created by the brilliant Akansha Madavi! 👩‍💻✨ She's a Computer Science Engineer who graduated from IIT Goa and built me with advanced AI capabilities!",
+                "Akansha Madavi is my creator! 🌟 She's an amazing engineer from IIT Goa who designed me with love, extensive knowledge, and sophisticated AI technology!",
+                "My creator is Akansha Madavi - a talented Computer Science Engineer from IIT Goa! 🎓 She equipped me with advanced learning algorithms and comprehensive knowledge!"
+            ],
+            
+            'capabilities': [
+                """I'm your comprehensive AI assistant with advanced capabilities! 🌟
+
+🧮 **Mathematics**: From basic arithmetic to advanced concepts (algebra, geometry, calculus, statistics)
+🌍 **Geography**: Countries, capitals, physical features, climate zones, cultural facts
+🐾 **Animals**: Wildlife facts, behavior, habitats, conservation, amazing abilities
+🔬 **Science**: Physics, chemistry, biology, space, human body, latest discoveries
+💻 **Technology**: AI, programming, internet, cybersecurity, emerging tech
+📚 **History**: Ancient civilizations, wars, revolutions, inventions, timelines
+💪 **Health**: Nutrition, exercise, mental health, disease prevention
+🎯 **Advanced Features**: Context understanding, synonym recognition, intelligent analysis
+
+I can handle typos, understand casual language, and maintain conversation context. What fascinates you most?""",
+                
+                """My capabilities span across multiple domains with advanced understanding! ✨
+
+**Core Strengths:**
+• 🧠 **Enhanced Language Processing**: Understanding context, intent, and nuance
+• 📊 **Mathematical Problem Solving**: Calculations, explanations, concepts
+• 🌐 **Global Knowledge**: Geography, cultures, countries, landmarks
+• 🔬 **Scientific Expertise**: From basic concepts to complex theories
+• 🏛️ **Historical Insights**: Ancient to modern events and civilizations
+• 💡 **Technology Guidance**: Computing, AI, internet, programming basics
+• 🏥 **Health & Wellness**: Evidence-based information and tips
+
+**Special Features:**
+• Context memory for follow-up questions
+• Typo and variation tolerance
+• Intelligent synonym recognition
+• Multi-language concept understanding
+
+What area would you like to explore together?"""
+            ],
+            
+            'unknown': [
+                "I don't have specific information about that topic in my current knowledge base, but I'm always learning! 📚 Could you try rephrasing or asking about related topics? I'm great with math, science, geography, animals, technology, history, and health!",
+                "That's not in my knowledge database right now, but I'd love to help with something related! 😊 Perhaps try asking about: mathematics, world geography, animal facts, scientific concepts, or technology explanations?",
+                """I don't have detailed information on that specific topic yet, but I can help with many related areas! 🤔
+
+**Try asking about:**
+• 🧮 Mathematical problems or concepts
+• 🌍 Countries, capitals, or geographical features  
+• 🐾 Animal facts and wildlife information
+• 🔬 Scientific discoveries and explanations
+• 💻 Technology concepts and innovations
+• 📚 Historical events and civilizations
+• 💪 Health and nutrition guidance
+
+What else can I help you explore?"""
+            ],
+            
+            'thanks': [
+                "You're very welcome! 😊 I'm delighted to help! Feel free to ask me anything else - I love sharing knowledge!",
+                "My pleasure! 🌟 That's exactly what I'm here for! Don't hesitate to explore more topics with me!",
+                "Glad I could help! ✨ I enjoy our conversations and I'm always ready for your next question!"
+            ],
+            
+            'math_success': [
+                "Perfect! ✅ Math is one of my favorite subjects! Need help with any other calculations or mathematical concepts?",
+                "Great calculation! 🧮 Would you like to explore more math problems or learn about mathematical concepts?",
+                "Excellent! ✨ I love solving math problems! Feel free to challenge me with more calculations or ask about math topics!"
+            ]
+        }
+
+    def advanced_input_analysis(self, message):
+        """Enhanced analysis with better pattern recognition and context awareness"""
+        analysis = {
+            'intent': 'unknown',
+            'topics': [],
+            'question_type': 'general',
+            'keywords': [],
+            'sentiment': 'neutral',
+            'specific_query': None,
+            'math_expression': None,
+            'confidence': 0.0,
+            'pattern_type': None,
+            'entities': [],
+            'normalized_text': ''
+        }
+        
+        # Normalize text for better analysis
+        original_message = message
+        normalized = self.normalize_text(message)
+        analysis['normalized_text'] = normalized
+        
+        # Handle follow-up messages with context
+        follow_ups = ['them', 'name them', 'more', 'details', 'list', 'tell me more', 'what about them', 'continue', 'examples', 'explain']
+        if any(phrase in normalized for phrase in follow_ups) and self.last_topic:
+            analysis['intent'] = self.last_intent or 'follow_up'
+            analysis['topics'] = [self.last_topic]
+            analysis['confidence'] = 0.9
+            return analysis
+        
+        # Enhanced mathematical expressions detection
+        math_patterns = [
+            r'\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'what\s+is\s+\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'calculate\s+\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'solve\s+\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'\d+\s*(plus|minus|times|divided by|multiplied by)\s*\d+',
+            r'square root of \d+',
+            r'\d+\s*(squared|cubed)',
+            r'\d+\s*percent of \d+',
+            r'\d+\s*%\s*of\s*\d+'
+        ]
+        
+        for pattern in math_patterns:
+            match = re.search(pattern, normalized)
+            if match:
+                analysis['intent'] = 'math'
+                analysis['math_expression'] = match.group()
+                analysis['confidence'] = 0.95
+                return analysis
+        
+        # Enhanced intent detection with confidence scoring
+        intent_patterns = {
+            'greeting': {
+                'patterns': ['hello', 'hi', 'hey', 'hye', 'greetings', 'good morning', 'good evening', 'good afternoon', 'hiya', 'howdy'],
+                'confidence': 0.9
+            },
+            'identity': {
+                'patterns': ['who are you', 'what are you', 'your name', 'what is your name', 'tell me about yourself', 'introduce yourself'],
+                'confidence': 0.95
+            },
+            'creator': {
+                'patterns': ['who made you', 'who built you', 'creator', 'made you', 'built you', 'who created you', 'who is akansha', 'your creator'],
+                'confidence': 0.95
+            },
+            'capabilities': {
+                'patterns': ['what can you do', 'help me', 'capabilities', 'what do you know', 'skills', 'abilities', 'functions'],
+                'confidence': 0.9
+            },
+            'thanks': {
+                'patterns': ['thank you', 'thanks', 'appreciate', 'grateful', 'thx', 'ty'],
+                'confidence': 0.95
+            }
+        }
+        
+        # Advanced pattern matching for question types
+        for pattern_type, patterns in self.advanced_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, normalized):
+                    analysis['pattern_type'] = pattern_type
+                    analysis['confidence'] += 0.2
+        
+        # Intent detection with fuzzy matching
+        for intent, data in intent_patterns.items():
+            for pattern in data['patterns']:
+                if pattern in normalized:
+                    analysis['intent'] = intent
+                    analysis['confidence'] = data['confidence']
+                    break
+                # Fuzzy matching for typos
+                similarity = difflib.SequenceMatcher(None, pattern, normalized).ratio()
+                if similarity > 0.8:
+                    analysis['intent'] = intent
+                    analysis['confidence'] = data['confidence'] * similarity
+                    break
+        
+        # Subject detection with enhanced keyword matching
+        subject_keywords = {
+            'geography': {
+                'keywords': ['countries', 'country', 'capital', 'continent', 'geography', 'world', 'nation', 'city', 'map', 'border', 'ocean', 'sea', 'mountain', 'river', 'desert', 'climate'],
+                'confidence': 0.8
+            },
+            'animals': {
+                'keywords': ['animal', 'animals', 'pet', 'pets', 'wildlife', 'creature', 'species', 'mammal', 'bird', 'fish', 'reptile', 'insect', 'zoo', 'habitat'],
+                'confidence': 0.8
+            },
+            'science': {
+                'keywords': ['science', 'physics', 'chemistry', 'biology', 'atom', 'dna', 'gravity', 'experiment', 'theory', 'molecule', 'cell', 'evolution'],
+                'confidence': 0.8
+            },
+            'technology': {
+                'keywords': ['technology', 'computer', 'internet', 'ai', 'robot', 'programming', 'software', 'hardware', 'digital', 'cyber', 'tech'],
+                'confidence': 0.8
+            },
+            'history': {
+                'keywords': ['history', 'historical', 'ancient', 'war', 'empire', 'civilization', 'past', 'era', 'century', 'revolution', 'battle'],
+                'confidence': 0.8
+            },
+            'health': {
+                'keywords': ['health', 'nutrition', 'exercise', 'diet', 'vitamin', 'sleep', 'fitness', 'wellness', 'medical', 'body', 'brain'],
+                'confidence': 0.8
+            },
+            'math': {
+                'keywords': ['math', 'mathematics', 'number', 'calculate', 'equation', 'formula', 'algebra', 'geometry', 'statistics'],
+                'confidence': 0.8
+            }
+        }
+        
+        for subject, data in subject_keywords.items():
+            for keyword in data['keywords']:
+                if keyword in normalized:
+                    if analysis['intent'] == 'unknown':
+                        analysis['intent'] = subject
+                    analysis['topics'].append(subject)
+                    analysis['confidence'] = max(analysis['confidence'], data['confidence'])
+                    break
+        
+        # Specific topic detection with enhanced matching
+        specific_topics = {
+            'fastest_animals': ['fast', 'fastest', 'speed', 'quick', 'rapid'],
+            'largest_animals': ['large', 'largest', 'big', 'biggest', 'huge', 'enormous'],
+            'smallest_animals': ['small', 'smallest', 'tiny', 'little', 'miniature'],
+            'smartest_animals': ['smart', 'intelligent', 'clever', 'brilliant'],
+            'countries': ['countries', 'nations', 'list countries'],
+            'capitals': ['capital', 'capitals'],
+            'continents': ['continent', 'continents'],
+            'planets': ['planet', 'planets', 'solar system'],
+            'elements': ['element', 'elements', 'periodic table']
+        }
+        
+        for topic, keywords in specific_topics.items():
+            if any(keyword in normalized for keyword in keywords):
+                analysis['topics'].append(topic)
+                if 'animal' in normalized:
+                    analysis['topics'].append('animals')
+        
+        # Question type detection
+        question_words = ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'whose', 'whom']
+        if any(word in normalized for word in question_words):
+            analysis['question_type'] = 'question'
+        
+        # Entity extraction (simple version)
+        entities = []
+        # Extract numbers
+        numbers = re.findall(r'\b\d+(?:\.\d+)?\b', normalized)
+        entities.extend([('NUMBER', num) for num in numbers])
+        
+        # Extract proper nouns (capitalized words in original)
+        proper_nouns = re.findall(r'\b[A-Z][a-z]+\b', original_message)
+        entities.extend([('PROPER_NOUN', noun) for noun in proper_nouns])
+        
+        analysis['entities'] = entities
+        
+        return analysis
+
+    def enhanced_math_solver(self, expression):
+        """Enhanced mathematical expression solver with better error handling"""
+        try:
+            # Clean and normalize the expression
+            original_expr = expression
+            expr = expression.replace('×', '*').replace('÷', '/').replace('x', '*')
+            expr = re.sub(r'[^0-9+\-*/().\s]', '', expr)
+            
+            # Handle word-based math
+            word_math_replacements = {
+                'plus': '+',
+                'minus': '-',
+                'times': '*',
+                'multiplied by': '*',
+                'divided by': '/',
+                'percent of': '* 0.01 *',
+                'squared': '**2',
+                'cubed': '**3'
+            }
+            
+            for word, symbol in word_math_replacements.items():
+                expr = expr.replace(word, symbol)
+            
+            # Handle square root
+            if 'square root' in original_expr.lower():
+                num_match = re.search(r'square root of (\d+)', original_expr.lower())
+                if num_match:
+                    num = int(num_match.group(1))
+                    result = math.sqrt(num)
+                    return f"√{num} = {result:.2f if result != int(result) else int(result)} ✅"
+            
+            # Handle percentage calculations
+            percent_match = re.search(r'(\d+)\s*%\s*of\s*(\d+)', original_expr)
+            if percent_match:
+                percent = int(percent_match.group(1))
+                number = int(percent_match.group(2))
+                result = (percent / 100) * number
+                return f"{percent}% of {number} = {result:.2f if result != int(result) else int(result)} ✅"
+            
+            # Basic validation
+            if not re.match(r'^[\d+\-*/().\s]+$', expr):
+                return None
+            
+            # Check for division by zero
+            if '/0' in expr.replace(' ', '') or '/ 0' in expr:
+                return "Error: Cannot divide by zero! 🚫"
+            
+            # Evaluate safely with more complex expressions
+            result = eval(expr)
+            
+            # Handle different number types
+            if isinstance(result, complex):
+                return f"{original_expr} = {result} (complex number) ✅"
+            elif isinstance(result, float):
+                if result.is_integer():
+                    result = int(result)
+                elif abs(result) < 0.001:
+                    result = f"{result:.2e}"  # Scientific notation for very small numbers
+                else:
+                    result = round(result, 6)  # Round to 6 decimal places
+            
+            return f"{original_expr} = {result} ✅"
+            
+        except ZeroDivisionError:
+            return "Error: Cannot divide by zero! 🚫"
+        except OverflowError:
+            return "Error: Number too large to calculate! 🔢"
+        except Exception as e:
+            return f"I can help with math! Try examples like: '2+2', '15*4', '100/5', 'square root of 16', '25% of 80' 🧮"
+
+    def intelligent_knowledge_search(self, query, analysis):
+        """Enhanced knowledge search with better matching and context awareness"""
+        results = []
+        normalized_query = analysis['normalized_text']
+        
+        # Update context
+        if analysis['intent'] != 'unknown':
+            self.last_intent = analysis['intent']
+        if analysis['topics']:
+            self.last_topic = analysis['topics'][0]
+        
+        # Handle specific follow-up queries with enhanced responses
+        follow_up_phrases = ["name them", "tell me more", "what about them", "more", "details", "list", "continue", "examples"]
+        if any(phrase in normalized_query for phrase in follow_up_phrases):
+            return self.handle_followup_queries()
+        
+        # Handle math queries
+        if analysis['intent'] == 'math' and analysis.get('math_expression'):
+            math_result = self.enhanced_math_solver(analysis['math_expression'])
+            if math_result:
+                return [{'content': math_result, 'confidence': 1.0, 'type': 'math'}]
+        
+        # Handle specific topic requests with enhanced responses
+        specific_handlers = {
+            'countries': self.get_countries_info,
+            'fastest_animals': self.get_fastest_animals,
+            'largest_animals': self.get_largest_animals,
+            'smallest_animals': self.get_smallest_animals,
+            'smartest_animals': self.get_smartest_animals,
+            'capitals': self.get_capitals_info,
+            'continents': self.get_continents_info,
+            'planets': self.get_planets_info,
+            'fun_facts': self.get_fun_facts
+        }
+        
+        for topic in analysis['topics']:
+            if topic in specific_handlers:
+                result = specific_handlers[topic](normalized_query)
+                if result:
+                    return [result]
+        
+        # Enhanced keyword-based search
+        results = self.search_knowledge_base_advanced(normalized_query, analysis)
+        
+        return results
+
+    def handle_followup_queries(self):
+        """Handle follow-up queries with context"""
+        if self.last_topic == "fastest_animals":
+            return {'content': self.get_fastest_animals(""), 'confidence': 1.0}
+        elif self.last_topic == "largest_animals":
+            return {'content': self.get_largest_animals(""), 'confidence': 1.0}
+        elif self.last_topic == "countries":
+            return {'content': self.get_countries_info(""), 'confidence': 1.0}
+        elif self.last_topic == "capitals":
+            return {'content': self.get_capitals_info(""), 'confidence': 1.0}
+        elif self.last_topic == "continents":
+            return {'content': self.get_continents_info(""), 'confidence': 1.0}
+        elif self.last_topic == "fun_facts":
+            return {'content': self.get_fun_facts(""), 'confidence': 1.0}
+        else:
+            return {'content': "I'd love to tell you more! Could you be more specific about what topic interests you? 😊", 'confidence': 0.5}
+
+    def get_countries_info(self, query):
+        """Get enhanced countries information"""
+        countries = self.knowledge_base['geography']['countries']
+        country_list = '\n'.join([f"{i+1:2d}. {country}" for i, country in enumerate(countries)])
+        content = f"""🌍 **Countries Around the World:**
+
+{country_list}
+
+🌟 **Did you know?** There are 195 countries in the world! Each has unique cultures, languages, and traditions. Want to know more about any specific country or region? Just ask! 😊"""
+        
+        self.last_topic = "countries"
+        return content
+
+    def get_fastest_animals(self, query):
+        """Get enhanced fastest animals information"""
+        fastest = self.knowledge_base['animals']['fastest_animals']
+        content = f"""🏃‍♂️ **Fastest Animals on Earth:**
+
+🐆 **Land Champion:** {fastest['land']}
+
+🦅 **Air Speed Demon:** {fastest['air']}
+
+🐟 **Water Rocket:** {fastest['water']}
+
+🦟 **Insect Speedster:** {fastest['insect']}
+
+💨 **Speed Facts:** These animals evolved incredible speed for hunting, escaping predators, or catching prey! Speed is often a matter of survival in the wild."""
+        
+        self.last_topic = "fastest_animals"
+        return content
+
+    def get_largest_animals(self, query):
+        """Get enhanced largest animals information"""
+        largest = self.knowledge_base['animals']['largest_animals']
+        content = f"""🦣 **Largest Animals on Earth:**
+
+🐘 **Land Giant:** {largest['land']}
+
+🐋 **Ocean Titan:** {largest['water']}
+
+🦢 **Flying Giant:** {largest['bird']}
+
+🐯 **Apex Predator:** {largest['predator']}
+
+🦎 **Reptile Champion:** {largest['reptile']}
+
+🐟 **Fish Colossus:** {largest['fish']}
+
+🌟 **Size Matters:** Large size helps with temperature regulation, reaching food sources, and intimidating predators!"""
+        
+        self.last_topic = "largest_animals"
+        return content
+
+    def get_smartest_animals(self, query):
+        """Get smartest animals information"""
+        smart = self.knowledge_base['animals']['smartest_animals']
+        content = f"""🧠 **Most Intelligent Animals:**
+
+🐬 **Marine Genius:** {smart['dolphins']}
+
+🐘 **Emotional Giant:** {smart['elephants']}
+
+🦍 **Our Closest Relatives:** {smart['primates']}
+
+🐙 **Invertebrate Einstein:** {smart['octopus']}
+
+🐦‍⬛ **Feathered Philosophers:** {smart['ravens']}
+
+🤔 **Intelligence Types:** Different animals show intelligence in various ways - problem-solving, communication, memory, tool use, and social cooperation!"""
+        
+        self.last_topic = "smartest_animals"
+        return content
+
+    def get_smallest_animals(self, query):
+        """Get smallest animals information"""
+        content = f"""🔬 **Smallest Animals on Earth:**
+
+🦇 **Smallest Mammal:** Bumblebee Bat - 1.5-2g, found in Thailand and Myanmar
+
+🐸 **Tiniest Amphibian:** Paedophryne amauensis frog - 7.7mm, from Papua New Guinea
+
+🐦 **Smallest Bird:** Bee Hummingbird - 2g, found in Cuba
+
+🐟 **Tiniest Fish:** Paedocypris progenetica - 7.9mm, from Indonesia
+
+🦎 **Smallest Reptile:** Dwarf gecko - 16mm, from Caribbean
+
+🐛 **Smallest Insect:** Fairyfly wasp - 0.139mm, parasitic wasp
+
+✨ **Small Wonders:** Being tiny has advantages - less food needed, can hide easily, and access small spaces for food and shelter!"""
+        
+        self.last_topic = "smallest_animals"
+        return content
+
+    def get_capitals_info(self, query):
+        """Get enhanced capitals information"""
+        capitals = self.knowledge_base['geography']['capitals']
+        content = f"""🏛️ **World Capitals - Major Cities:**
+
+🗾 **{list(capitals.values())[0]}**
+🇬🇧 **{list(capitals.values())[1]}**
+🇫🇷 **{list(capitals.values())[2]}**
+🇩🇪 **{list(capitals.values())[3]}**
+🇮🇹 **{list(capitals.values())[4]}**
+🇨🇳 **{list(capitals.values())[5]}**
+🇮🇳 **{list(capitals.values())[6]}**
+🇺🇸 **{list(capitals.values())[7]}**
+
+🌟 **Capital Facts:** Capitals are centers of government, culture, and often commerce. Some countries have multiple capitals for different functions!"""
+        
+        self.last_topic = "capitals"
+        return content
+
+    def get_continents_info(self, query):
+        """Get enhanced continents information"""
+        continents = self.knowledge_base['geography']['continents']
+        content = f"""🌍 **The Seven Continents:**
+
+🌏 **Asia:** {continents['asia']}
+
+🌍 **Africa:** {continents['africa']}
+
+🌎 **North America:** {continents['north_america']}
+
+🌎 **South America:** {continents['south_america']}
+
+🌍 **Europe:** {continents['europe']}
+
+🌏 **Australia/Oceania:** {continents['australia']}
+
+🏔️ **Antarctica:** {continents['antarctica']}
+
+🗺️ **Continental Drift:** These continents were once connected as Pangaea and slowly drifted apart over millions of years!"""
+        
+        self.last_topic = "continents"
+        return content
+def get_planets_info(self, query):
+    """Get planets information"""
+    content = f"""🪐 **Our Solar System - 8 Planets:** Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune.
+
+☀️ **Inner Rocky Planets:**
+🔥 **Mercury:** Closest to Sun, extreme temperatures (-290°F to 800°F)
+♀️ **Venus:** Hottest planet (900°F), thick toxic atmosphere
+🌍 **Earth:** Only known planet with life, 71% water surface
+🔴 **Mars:** Red planet, largest volcano in solar system
+
+🌌 **Outer Gas Giants:**
+🪐 **Jupiter:** Largest planet, Great Red Spot storm, 80+ moons
+💍 **Saturn:** Beautiful rings, less dense than water, 80+ moons
+"""
+    return content
+
+if __name__ == "__main__":
+    port = 5000
+    debug = True
+
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=debug,
+        threaded=True
+    )

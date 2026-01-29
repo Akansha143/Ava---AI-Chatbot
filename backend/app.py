@@ -1,0 +1,1028 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import logging
+import time
+import os
+import re
+import json
+import random
+from datetime import datetime
+from collections import defaultdict
+import sqlite3
+import threading
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
+class AvaAIBrain:
+    def __init__(self):
+        self.conversation_history = []
+        self.knowledge_base = {}
+        self.user_preferences = {}
+        self.context_memory = {}
+        self.word_associations = defaultdict(list)
+        self.response_patterns = {}
+        self.learning_data = defaultdict(int)
+        self.last_intent = None
+        self.last_topic = None
+        self.conversation_context = []
+        
+        # Thread lock for database operations
+        self.db_lock = threading.Lock()
+        
+        # Initialize database for persistent learning
+        self.init_database()
+        
+        # Load comprehensive knowledge base
+        self.load_comprehensive_knowledge_base()
+        
+        # Load response patterns
+        self.load_response_patterns()
+        
+        logger.info("🤖 Ava AI Brain initialized successfully")
+
+    def init_database(self):
+        """Initialize SQLite database for learning"""
+        try:
+            self.conn = sqlite3.connect('ava_memory.db', check_same_thread=False)
+            cursor = self.conn.cursor()
+            
+            # Create tables for learning
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_input TEXT,
+                    ai_response TEXT,
+                    context TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    user_feedback INTEGER DEFAULT 0
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS knowledge (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT,
+                    question TEXT,
+                    answer TEXT,
+                    confidence REAL DEFAULT 1.0,
+                    usage_count INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
+                    name TEXT,
+                    preferences TEXT,
+                    conversation_style TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            self.conn.commit()
+            logger.info("✅ Database initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Database initialization error: {e}")
+
+    def load_comprehensive_knowledge_base(self):
+        """Load massive comprehensive knowledge base"""
+        self.knowledge_base = {
+            # Basic Mathematics
+            'math': {
+                'basic_operations': {
+                    '2+2': '2 + 2 = 4',
+                    '5+3': '5 + 3 = 8',
+                    '10-4': '10 - 4 = 6',
+                    '6*7': '6 × 7 = 42',
+                    '15/3': '15 ÷ 3 = 5',
+                    '3*3': '3 × 3 = 9',
+                    '8+7': '8 + 7 = 15',
+                    '20-5': '20 - 5 = 15',
+                    '12*12': '12 × 12 = 144',
+                    '100/4': '100 ÷ 4 = 25'
+                },
+                'pi': 'Pi (π) is approximately 3.14159, representing the ratio of a circle\'s circumference to its diameter',
+                'fibonacci': 'The Fibonacci sequence starts: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55... Each number is the sum of the two preceding ones',
+                'prime_numbers': 'Prime numbers are natural numbers greater than 1 with only two factors (1 and themselves): 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31...',
+                'calculus': 'Calculus studies continuous change through derivatives (rates of change) and integrals (accumulation of quantities)',
+                'geometry': 'Geometry deals with shapes, sizes, angles, and dimensions. Basic shapes include circles, triangles, squares, rectangles.'
+            },
+            
+            # Countries and Geography
+            'geography': {
+                'countries': [
+                    '🇮🇳 India - South Asia, Capital: New Delhi, Population: 1.4+ billion',
+                    '🇺🇸 United States - North America, Capital: Washington D.C., 50 states',
+                    '🇨🇳 China - East Asia, Capital: Beijing, Most populous country',
+                    '🇧🇷 Brazil - South America, Capital: Brasília, Largest in South America',
+                    '🇷🇺 Russia - Eurasia, Capital: Moscow, Largest country by area',
+                    '🇯🇵 Japan - East Asia, Capital: Tokyo, Island nation',
+                    '🇩🇪 Germany - Central Europe, Capital: Berlin, Economic powerhouse',
+                    '🇫🇷 France - Western Europe, Capital: Paris, Famous for culture',
+                    '🇬🇧 United Kingdom - Europe, Capital: London, Island nation',
+                    '🇦🇺 Australia - Oceania, Capital: Canberra, Continent-country',
+                    '🇨🇦 Canada - North America, Capital: Ottawa, Second largest by area',
+                    '🇲🇽 Mexico - North America, Capital: Mexico City, Rich culture',
+                    '🇮🇹 Italy - Southern Europe, Capital: Rome, Boot-shaped peninsula',
+                    '🇪🇸 Spain - Western Europe, Capital: Madrid, Iberian Peninsula',
+                    '🇰🇷 South Korea - East Asia, Capital: Seoul, Technological hub'
+                ],
+                'continents': 'Seven continents: Asia (largest, 30% of land), Africa (cradle of humanity), North America, South America, Antarctica (coldest), Europe (smallest), Australia/Oceania',
+                'highest_mountain': 'Mount Everest: 29,032 feet (8,849m) above sea level in the Himalayas between Nepal and Tibet',
+                'longest_river': 'Nile River: ~4,135 miles (6,650km) through Egypt, Sudan, Uganda, and other African countries',
+                'largest_ocean': 'Pacific Ocean: Covers 46% of Earth\'s water surface, larger than all land masses combined',
+                'smallest_country': 'Vatican City: 0.17 square miles (0.44 km²), population ~800 people',
+                'deserts': 'Major deserts: Sahara (largest hot desert), Antarctica (largest overall), Gobi, Mojave, Atacama',
+                'capitals': 'capitals: Tokyo (Japan), London (UK), Paris (France), Berlin (Germany), Rome (Italy)'
+            },
+            
+            # Animals and Nature - FIXED
+            'animals': {
+                'wild_animals': [
+                    '🦁 Lion - King of the jungle, found in Africa and India',
+                    '🐯 Tiger - Largest wild cat, found in Asia',
+                    '🐘 Elephant - Largest land animal, highly intelligent',
+                    '🦒 Giraffe - Tallest animal, found in Africa',
+                    '🐻 Bear - Powerful omnivores, various species worldwide',
+                    '🦏 Rhino - Large herbivores with distinctive horns',
+                    '🦓 Zebra - Striped horses, found in Africa',
+                    '🐆 Leopard - Spotted big cats, excellent climbers',
+                    '🦘 Kangaroo - Jumping marsupials from Australia',
+                    '🐺 Wolf - Pack hunters, ancestors of dogs'
+                ],
+                'domestic_animals': [
+                    '🐕 Dog - Loyal companions, various breeds',
+                    '🐱 Cat - Independent pets, excellent hunters',
+                    '🐄 Cow - Dairy and meat providers',
+                    '🐎 Horse - Noble animals, used for riding',
+                    '🐷 Pig - Intelligent farm animals',
+                    '🐑 Sheep - Wool and meat providers',
+                    '🐐 Goat - Hardy farm animals',
+                    '🐓 Chicken - Egg and meat providers',
+                    '🦆 Duck - Water birds, farm animals',
+                    '🐰 Rabbit - Gentle pets and farm animals'
+                ],
+                'marine_animals': [
+                    '🐋 Whale - Largest animals on Earth',
+                    '🦈 Shark - Ocean predators, various species',
+                    '🐬 Dolphin - Intelligent marine mammals',
+                    '🐙 Octopus - Smart invertebrates with 8 arms',
+                    '🐢 Sea Turtle - Ancient marine reptiles',
+                    '🦭 Seal - Marine mammals, excellent swimmers',
+                    '🐟 Fish - Diverse aquatic vertebrates',
+                    '🦑 Squid - Marine mollusks with tentacles',
+                    '🐠 Tropical Fish - Colorful ocean dwellers',
+                    '🦀 Crab - Marine crustaceans with claws'
+                ],
+                'fastest_animals': {
+                    'land': 'Cheetah: Up to 70 mph (112 km/h) in short bursts, found in Africa',
+                    'air': 'Peregrine Falcon: Over 240 mph (386 km/h) when diving, found worldwide',
+                    'water': 'Black Marlin: Up to 80 mph (129 km/h), found in Pacific and Indian Oceans'
+                },
+                'largest_animals': {
+                    'land': 'African Elephant: Up to 13,000 pounds (6 tons), intelligent with excellent memory',
+                    'water': 'Blue Whale: Up to 100 feet long and 200 tons, largest animal ever known',
+                    'bird': 'Ostrich: Up to 9 feet tall, can run 43 mph, native to Africa',
+                    'predator': 'Siberian Tiger: Up to 660 pounds, largest living cat species'
+                },
+                'pets': 'Popular pets: Dogs (loyal companions), Cats (independent), Birds (colorful, can talk), Fish (peaceful), Rabbits (gentle), Hamsters (small, active)',
+                'endangered': 'Endangered species: Giant Pandas (recovering), Tigers (<4,000 left), Rhinos (critically low), Snow Leopards, Polar Bears (climate change)',
+                'facts': 'Animal facts: Elephants can\'t jump, Sharks existed before trees, Honey never spoils, Octopuses have 3 hearts, Koalas sleep 20+ hours daily'
+            },
+            
+            # Science and Technology
+            'science': {
+                'gravity': 'Gravity: Fundamental force attracting objects with mass. On Earth: 9.8 m/s² acceleration. Keeps planets in orbit around the sun',
+                'photosynthesis': 'Plants convert sunlight + CO₂ + H₂O → glucose + oxygen using chlorophyll in leaves. Foundation of most food chains',
+                'dna': 'DNA (Deoxyribonucleic Acid): Double helix structure containing genetic instructions for all living organisms. Made of A, T, G, C bases',
+                'atoms': 'Atoms: Basic building blocks of matter. Nucleus (protons + neutrons) surrounded by electron shells. 118+ known elements',
+                'solar_system': 'Solar System: Sun + 8 planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune) + moons, asteroids, comets',
+                'human_body': 'Human body: 206 bones, 600+ muscles, 86 billion brain neurons, 37 trillion cells, heart beats 100,000+ times daily',
+                'physics': 'Physics studies matter, energy, motion. Key concepts: gravity, electricity, magnetism, light, sound, heat, nuclear forces',
+                'chemistry': 'Chemistry studies atoms, molecules, reactions. Periodic table has 118 elements. Water is H₂O, salt is NaCl'
+            },
+            
+            # Technology
+            'technology': {
+                'ai': 'Artificial Intelligence: Machines performing tasks requiring human-like intelligence (learning, reasoning, problem-solving, perception)',
+                'internet': 'Internet: Global network of interconnected computers using protocols like HTTP, TCP/IP. Connects billions of devices worldwide',
+                'computer': 'Computer: Electronic device with CPU (brain), RAM (memory), storage (hard drive), input/output devices. Processes data using binary code',
+                'smartphone': 'Smartphone: Portable computer with touchscreen, calls, apps, internet, camera, GPS. More powerful than 1960s room-sized computers',
+                'programming': 'Programming: Writing instructions (code) for computers. Languages: Python, Java, JavaScript, C++, HTML, CSS',
+                'robotics': 'Robotics: Machines that can perform tasks autonomously. Used in manufacturing, space exploration, medicine, household chores',
+                'blockchain': 'Blockchain: Decentralized digital ledger technology. Foundation of cryptocurrencies like Bitcoin. Secure, transparent transactions'
+            },
+            
+            # History and Culture
+            'history': {
+                'world_wars': 'WWI (1914-1918): "The Great War", trench warfare, 16+ million deaths. WWII (1939-1945): Deadliest conflict, 70+ million deaths',
+                'ancient_civilizations': 'Major civilizations: Mesopotamia (first cities), Egypt (pyramids), Greece (democracy), Rome (empire), China (inventions), Maya (astronomy)',
+                'independence_days': 'Independence: India (Aug 15, 1947 from Britain), USA (July 4, 1776 from Britain), France (July 14, 1789 - Bastille Day)',
+                'inventions': 'Key inventions: Wheel (3500 BCE), Printing Press (1440), Steam Engine (1712), Telephone (1876), Light Bulb (1879), Internet (1960s-90s)',
+                'explorers': 'Famous explorers: Christopher Columbus (Americas), Vasco da Gama (India route), Marco Polo (Silk Road), Neil Armstrong (Moon)',
+                'empires': 'Great empires: Roman (27 BCE-476 CE), British (largest ever), Mongol (largest contiguous), Ottoman (600+ years)'
+            },
+            
+            # Colors and Basic Facts
+            'basics': {
+                'colors': 'Primary: Red, Blue, Yellow. Secondary: Green, Orange, Purple. Rainbow: ROYGBIV (Red, Orange, Yellow, Green, Blue, Indigo, Violet)',
+                'days_week': 'Days: Monday (Moon day), Tuesday (Mars day), Wednesday (Mercury day), Thursday (Jupiter day), Friday (Venus day), Saturday (Saturn day), Sunday (Sun day)',
+                'months': 'Months: January (31), February (28/29), March (31), April (30), May (31), June (30), July (31), August (31), September (30), October (31), November (30), December (31)',
+                'seasons': 'Seasons: Spring (renewal, growth), Summer (warmth, longest days), Autumn/Fall (harvest, leaves change), Winter (cold, shortest days)',
+                'elements': 'Classical: Earth, Water, Air, Fire. Chemical: Hydrogen (H), Helium (He), Carbon (C), Oxygen (O), Iron (Fe), Gold (Au)',
+                'numbers': 'Number systems: Decimal (base 10), Binary (base 2 for computers), Roman numerals (I, V, X, L, C, D, M)'
+            },
+            
+            # Food and Health
+            'health': {
+                'nutrition': 'Balanced diet: Proteins (meat, beans), Carbs (grains, fruits), Fats (nuts, oils), Vitamins (fruits, vegetables), Minerals, Water',
+                'exercise': 'Exercise benefits: Stronger heart, muscles, bones. Better mood, sleep, energy. Reduces disease risk. 150+ minutes weekly recommended',
+                'sleep': 'Sleep importance: Adults need 7-9 hours. Memory consolidation, immune system boost, growth hormone release, mental health',
+                'water': 'Hydration: Drink 8+ glasses (2 liters) daily. Water regulates temperature, transports nutrients, removes waste, lubricates joints',
+                'vitamins': 'Key vitamins: A (vision), B (energy), C (immune system), D (bones), E (antioxidant), K (blood clotting)',
+                'diseases': 'Prevention: Vaccination, hand washing, healthy diet, exercise, avoid smoking, limit alcohol, regular checkups'
+            },
+            
+            # Creator Information - ADDED
+            'creator': {
+                'akansha_madavi': 'Akansha Madavi is a Computer Science Engineer who graduated from IIT Goa. She is a talented developer who specializes in AI and software development. She created me (Ava) with advanced natural language processing capabilities and extensive knowledge base.',
+                'education': 'Akansha Madavi graduated from Indian Institute of Technology (IIT) Goa with a degree in Computer Science Engineering.',
+                'skills': 'Akansha Madavi is skilled in AI development, machine learning, natural language processing, Python programming, and software engineering.',
+                'projects': 'Akansha has worked on various AI projects including chatbots, machine learning models, and intelligent assistant systems like me!'
+            }
+        }
+
+    def load_response_patterns(self):
+        """Load response patterns for different types of questions"""
+        self.response_patterns = {
+            'greeting': [
+                "Hello! I'm Ava, your AI assistant. How can I help you today? 😊",
+                "Hi there! I'm Ava, ready to assist you with any questions or tasks! ✨",
+                "Greetings! I'm Ava, your intelligent assistant. What would you like to know? 🤖",
+                "Hello! Ava here. What can I help you learn or explore today? 🌟"
+            ],
+            
+            'identity': [
+                "I'm Ava, your custom AI assistant! I'm designed to be helpful, knowledgeable, and easy to talk with. 🤖✨",
+                "My name is Ava - I'm an AI assistant built to help you with questions, learning, and problem-solving! 🧠",
+                "I'm Ava, your personal AI assistant. I can help with math, science, geography, animals, and much more! 📚"
+            ],
+            
+            'creator': [
+                "I was created by Akansha Madavi! 👩‍💻 She's a Computer Science Engineer who graduated from IIT Goa.",
+                "Akansha Madavi built me from scratch with lots of love and code! ❤️ She's an IIT Goa graduate.",
+                "My creator is Akansha Madavi - she's amazing! 🌟 She studied Computer Science at IIT Goa."
+            ],
+            
+            'capabilities': [
+                "I can help you with many things! 🌟\n• Math calculations and explanations\n• Country facts and geography\n• Animal information and fun facts\n• Science concepts and discoveries\n• Technology explanations\n• Historical events\n• Health and nutrition tips\n• General knowledge questions\n\nJust ask me anything!",
+                "My capabilities include:\n✅ Mathematical problem solving\n✅ Geography and world facts\n✅ Animal kingdom knowledge\n✅ Science explanations\n✅ Technology insights\n✅ Historical information\n✅ Health and wellness tips\n✅ General conversation\n\nWhat interests you most?",
+                "I'm great at answering questions about:\n🧮 Mathematics and calculations\n🌍 Countries and geography\n🐾 Animals and nature\n🔬 Science and discoveries\n💻 Technology concepts\n📚 History and culture\n💪 Health and fitness\n\nWhat would you like to explore?"
+            ],
+            
+            'unknown': [
+                "I don't have specific information about that topic in my current knowledge base, but I'm always learning! 📚 Could you try asking about math, geography, animals, science, or technology?",
+                "That's not in my knowledge database right now, but I'd love to help with something else! 😊 Try asking about countries, calculations, animal facts, or science concepts!",
+                "I don't know about that specific topic yet, but I can help with lots of other things like:\n• Math problems\n• Country information\n• Animal facts\n• Science questions\n• Technology explanations\n\nWhat else can I help you with?"
+            ],
+            
+            'thanks': [
+                "You're very welcome! 😊 Happy to help anytime!",
+                "Glad I could help! Feel free to ask me anything else! ✨",
+                "My pleasure! That's what I'm here for! 🤖❤️"
+            ]
+        }
+
+    def enhanced_input_analysis(self, message):
+        """Enhanced analysis of user input with better pattern matching"""
+        analysis = {
+            'intent': 'unknown',
+            'topics': [],
+            'question_type': 'general',
+            'keywords': [],
+            'sentiment': 'neutral',
+            'specific_query': None,
+            'math_expression': None
+        }
+        
+        message_lower = message.lower().strip()
+        
+        # Handle follow-up messages
+        follow_ups = ['them', 'name them', 'more', 'details', 'list', 'tell me more', 'what about them', 'continue']
+        if any(phrase in message_lower for phrase in follow_ups) and self.last_topic:
+            analysis['intent'] = self.last_intent or 'follow_up'
+            analysis['topics'] = [self.last_topic]
+            return analysis
+        
+        # Mathematical expressions detection (improved)
+        math_patterns = [
+            r'\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'what\s+is\s+\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'calculate\s+\d+\s*[\+\-\*\/×÷]\s*\d+',
+            r'solve\s+\d+\s*[\+\-\*\/×÷]\s*\d+'
+        ]
+        
+        for pattern in math_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                analysis['intent'] = 'math'
+                analysis['math_expression'] = match.group()
+                return analysis
+        
+        # Intent detection (improved)
+        intent_patterns = {
+            'greeting': ['hello', 'hi', 'hey', 'hye', 'greetings', 'good morning', 'good evening'],
+            'identity': ['who are you', 'what are you', 'your name', 'what is your name', 'tell me about yourself'],
+            'creator': ['who made you', 'who built you', 'creator', 'made you', 'built you', 'who created you', 'who is akansha', 'akansha madavi', 'about akansha'],
+            'capabilities': ['what can you do', 'help me', 'capabilities', 'what do you know', 'skills', 'features'],
+            'thanks': ['thank you', 'thanks', 'appreciate', 'grateful'],
+            'geography': ['countries', 'country', 'capital', 'continent', 'geography', 'world'],
+            'animals': ['animal', 'animals', 'pet', 'pets', 'wildlife', 'creature', 'wild animals', 'domestic animals', 'marine animals'],
+            'science': ['science', 'physics', 'chemistry', 'biology', 'atom', 'dna', 'gravity'],
+            'technology': ['technology', 'computer', 'internet', 'ai', 'robot', 'programming'],
+            'history': ['history', 'historical', 'ancient', 'war', 'empire', 'civilization'],
+            'health': ['health', 'nutrition', 'exercise', 'diet', 'vitamin', 'sleep'],
+            'math': ['math', 'mathematics', 'calculate', 'solve', 'plus', 'minus', 'times', 'divide']
+        }
+        
+        for intent, keywords in intent_patterns.items():
+            if any(keyword in message_lower for keyword in keywords):
+                analysis['intent'] = intent
+                break
+        
+        # Special topic detection - FIXED
+        if any(word in message_lower for word in ['wild', 'wild animals', 'jungle animals']):
+            analysis['topics'].append('wild_animals')
+            analysis['intent'] = 'animals'
+        elif any(word in message_lower for word in ['domestic', 'pet', 'farm animals']):
+            analysis['topics'].append('domestic_animals')
+            analysis['intent'] = 'animals'
+        elif any(word in message_lower for word in ['marine', 'ocean', 'sea animals', 'water animals']):
+            analysis['topics'].append('marine_animals')
+            analysis['intent'] = 'animals'
+        elif any(word in message_lower for word in ['fast', 'fastest', 'speed']) and 'animal' in message_lower:
+            analysis['topics'].append('fastest_animals')
+            analysis['intent'] = 'animals'
+        elif any(word in message_lower for word in ['large', 'largest', 'big', 'biggest']) and 'animal' in message_lower:
+            analysis['topics'].append('largest_animals')
+            analysis['intent'] = 'animals'
+        elif 'countries' in message_lower:
+            analysis['topics'].append('countries')
+            analysis['intent'] = 'geography'
+        
+        # Question type detection
+        if any(word in message_lower for word in ['what', 'how', 'why', 'when', 'where', 'which', 'who']):
+            analysis['question_type'] = 'question'
+        
+        return analysis
+
+    def solve_math_expression(self, expression):
+        """Safely solve basic math expressions with better error handling"""
+        try:
+            # Clean and normalize the expression
+            expr = expression.replace('×', '*').replace('÷', '/').replace('x', '*')
+            expr = re.sub(r'[^0-9+\-*/().\s]', '', expr)
+            
+            # Basic validation
+            if not re.match(r'^[\d+\-*/().\s]+$', expr):
+                return None
+            
+            # Check for division by zero
+            if '/0' in expr.replace(' ', ''):
+                return "Error: Cannot divide by zero! 🚫"
+            
+            # Evaluate safely
+            result = eval(expr)
+            
+            # Format result nicely
+            if isinstance(result, float) and result.is_integer():
+                result = int(result)
+            
+            return f"{expression} = {result} ✅"
+            
+        except ZeroDivisionError:
+            return "Error: Cannot divide by zero! 🚫"
+        except Exception as e:
+            return f"Error: Invalid mathematical expression. Please try something like '2+2' or '10*5' 🤔"
+
+    def search_knowledge_base(self, query, analysis):
+        """Enhanced knowledge base search with better matching"""
+        results = []
+        query_lower = query.lower()
+        
+        # Update context
+        self.last_intent = analysis['intent']
+        if analysis['topics']:
+            self.last_topic = analysis['topics'][0]
+        
+        # Handle specific requests - FIXED
+        if analysis['intent'] == 'animals':
+            if 'wild' in query_lower or 'wild animals' in query_lower:
+                animals_list = self.knowledge_base['animals']['wild_animals'][:5]
+                animal_text = '\n'.join([f"{i+1}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🦁 **Wild Animals:**\n\n{animal_text}\n\nWant to know about more wild animals? Just ask! 🌿"
+                self.last_topic = "wild_animals"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif 'domestic' in query_lower or 'pet' in query_lower:
+                animals_list = self.knowledge_base['animals']['domestic_animals'][:5]
+                animal_text = '\n'.join([f"{i+1}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🐕 **Domestic Animals:**\n\n{animal_text}\n\nWant to know about more pets? Just ask! 🏠"
+                self.last_topic = "domestic_animals"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif 'marine' in query_lower or 'ocean' in query_lower or 'sea' in query_lower or 'water' in query_lower:
+                animals_list = self.knowledge_base['animals']['marine_animals'][:5]
+                animal_text = '\n'.join([f"{i+1}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🐋 **Marine Animals:**\n\n{animal_text}\n\nWant to know about more ocean creatures? Just ask! 🌊"
+                self.last_topic = "marine_animals"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            else:
+                # General animals request - show a mix
+                wild = self.knowledge_base['animals']['wild_animals'][:3]
+                domestic = self.knowledge_base['animals']['domestic_animals'][:2]
+                all_animals = wild + domestic
+                animal_text = '\n'.join([f"{i+1}. {animal}" for i, animal in enumerate(all_animals)])
+                content = f"🐾 **Animals:**\n\n{animal_text}\n\nSpecific type? Try: 'wild animals', 'pets', or 'marine animals'! 🌟"
+                return [{'content': content, 'confidence': 1.0}]
+        
+        # Handle creator questions - FIXED
+        if analysis['intent'] == 'creator' or 'akansha' in query_lower:
+            if 'who is akansha' in query_lower or 'about akansha' in query_lower:
+                content = self.knowledge_base['creator']['akansha_madavi']
+                return [{'content': content, 'confidence': 1.0}]
+            else:
+                content = random.choice(self.response_patterns['creator'])
+                return [{'content': content, 'confidence': 1.0}]
+        
+        # Handle follow-up queries
+        follow_up_phrases = ["name them", "tell me more", "what about them", "more", "details", "list", "continue"]
+        if any(phrase in query_lower for phrase in follow_up_phrases):
+            if self.last_topic == "wild_animals":
+                animals_list = self.knowledge_base['animals']['wild_animals'][5:10]
+                animal_text = '\n'.join([f"{i+6}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🦁 **More Wild Animals:**\n\n{animal_text}\n\nWant even more? Just ask! 🌿"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif self.last_topic == "domestic_animals":
+                animals_list = self.knowledge_base['animals']['domestic_animals'][5:10]
+                animal_text = '\n'.join([f"{i+6}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🐕 **More Domestic Animals:**\n\n{animal_text}\n\nWant even more pets? Just ask! 🏠"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif self.last_topic == "marine_animals":
+                animals_list = self.knowledge_base['animals']['marine_animals'][5:10]
+                animal_text = '\n'.join([f"{i+6}. {animal}" for i, animal in enumerate(animals_list)])
+                content = f"🐋 **More Marine Animals:**\n\n{animal_text}\n\nWant even more ocean creatures? Just ask! 🌊"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif self.last_topic == "fastest_animals":
+                fastest = self.knowledge_base['animals']['fastest_animals']
+                content = f"🏃‍♂️ **Fastest Animals:**\n\n🐆 **Land:** {fastest['land']}\n🦅 **Air:** {fastest['air']}\n🐟 **Water:** {fastest['water']}"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif self.last_topic == "largest_animals":
+                largest = self.knowledge_base['animals']['largest_animals']
+                content = f"🦣 **Largest Animals:**\n\n🐘 **Land:** {largest['land']}\n🐋 **Water:** {largest['water']}\n🦢 **Bird:** {largest['bird']}\n🐯 **Predator:** {largest['predator']}"
+                return [{'content': content, 'confidence': 1.0}]
+            
+            elif self.last_topic == "countries":
+                countries = self.knowledge_base['geography']['countries']
+                country_list = '\n'.join([f"{i+1:2d}. {country}" for i, country in enumerate(countries[:15])])
+                content = f"🌍 **Countries Around the World:**\n\n{country_list}\n\n...and many more! 🌎"
+                return [{'content': content, 'confidence': 1.0}]
+        
+        # Handle math queries
+        if analysis['intent'] == 'math' and analysis.get('math_expression'):
+            math_result = self.solve_math_expression(analysis['math_expression'])
+            if math_result:
+                return [{'content': math_result, 'confidence': 1.0}]
+        
+        # Handle specific requests
+        if 'countries' in query_lower or 'name countries' in query_lower:
+            countries = self.knowledge_base['geography']['countries'][:10]
+            country_list = '\n'.join([f"{i+1:2d}. {country}" for i, country in enumerate(countries)])
+            content = f"🌍 **Top 10 Countries:**\n\n{country_list}\n\nWant to know more countries? Just ask! 😊"
+            self.last_topic = "countries"
+            return [{'content': content, 'confidence': 1.0}]
+        
+        # Handle fastest animals
+        if ('fastest' in query_lower or 'fast' in query_lower) and 'animal' in query_lower:
+            fastest = self.knowledge_base['animals']['fastest_animals']
+            content = f"🏃‍♂️ **Fastest Animals:**\n\n🐆 **Land:** {fastest['land']}\n🦅 **Air:** {fastest['air']}\n🐟 **Water:** {fastest['water']}"
+            self.last_topic = "fastest_animals"
+            return [{'content': content, 'confidence': 1.0}]
+        
+        # Handle largest animals
+        if ('largest' in query_lower or 'biggest' in query_lower) and 'animal' in query_lower:
+            largest = self.knowledge_base['animals']['largest_animals']
+            content = f"🦣 **Largest Animals:**\n\n🐘 **Land:** {largest['land']}\n🐋 **Water:** {largest['water']}\n🦢 **Bird:** {largest['bird']}\n🐯 **Predator:** {largest['predator']}"
+            self.last_topic = "largest_animals"
+            return [{'content': content, 'confidence': 1.0}]
+        
+        # Search through knowledge base
+        for category, topics in self.knowledge_base.items():
+            for topic, content in topics.items():
+                if isinstance(content, dict):
+                    for subtopic, subcontent in content.items():
+                        if self._match_content(query_lower, subcontent):
+                            results.append({
+                                'content': subcontent,
+                                'confidence': 0.8,
+                                'category': category,
+                                'topic': topic
+                            })
+                elif isinstance(content, list):
+                    continue
+                else:
+                    if self._match_content(query_lower, content):
+                        results.append({
+                            'content': content,
+                            'confidence': 0.7,
+                            'category': category,
+                            'topic': topic
+                        })
+        
+        return sorted(results, key=lambda x: x['confidence'], reverse=True)[:3]
+
+    def _match_content(self, query_lower, content):
+        """Helper method to match query with content"""
+        if not isinstance(content, str):
+            return False
+        
+        content_lower = content.lower()
+        query_words = [word for word in query_lower.split() if len(word) > 2]
+        
+        if len(query_words) == 0:
+            return False
+        
+        # Check if most words match
+        matches = sum(1 for word in query_words if word in content_lower)
+        return matches >= max(1, len(query_words) // 2)
+
+    def save_conversation(self, user_input, ai_response):
+        """Save conversation to database"""
+        try:
+            with self.db_lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO conversations (user_input, ai_response, context)
+                    VALUES (?, ?, ?)
+                ''', (user_input, ai_response, json.dumps(self.conversation_context[-5:])))
+                self.conn.commit()
+        except Exception as e:
+            logger.error(f"Error saving conversation: {e}")
+
+    def generate_response(self, message):
+        """Main response generation method with enhanced logic"""
+        try:
+            # Add to conversation context
+            self.conversation_context.append({
+                'user': message,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Analyze the input
+            analysis = self.enhanced_input_analysis(message)
+            
+            # Handle specific intents
+            if analysis['intent'] == 'greeting':
+                response = random.choice(self.response_patterns['greeting'])
+            
+            elif analysis['intent'] == 'identity':
+                response = random.choice(self.response_patterns['identity'])
+            
+            elif analysis['intent'] == 'creator':
+                response = random.choice(self.response_patterns['creator'])
+            
+            elif analysis['intent'] == 'capabilities':
+                response = random.choice(self.response_patterns['capabilities'])
+            
+            elif analysis['intent'] == 'thanks':
+                response = random.choice(self.response_patterns['thanks'])
+            
+            elif analysis['intent'] == 'math':
+                if analysis.get('math_expression'):
+                    result = self.solve_math_expression(analysis['math_expression'])
+                    response = result if result else "I can help with basic math! Try asking me something like '2+2' or 'what is 5*6'? 🧮"
+                else:
+                    response = "I can help with basic math! Try asking me something like '2+2' or 'what is 5*6'? 🧮"
+            
+            else:
+                # Search knowledge base
+                knowledge_results = self.search_knowledge_base(message, analysis)
+                
+                if knowledge_results and knowledge_results[0]['confidence'] > 0.6:
+                    response = knowledge_results[0]['content']
+                else:
+                    response = self.generate_intelligent_fallback(message, analysis)
+            
+            # Add response to context
+            self.conversation_context.append({
+                'assistant': response,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Keep only last 10 context items
+            if len(self.conversation_context) > 10:
+                self.conversation_context = self.conversation_context[-10:]
+            
+            # Save conversation
+            self.save_conversation(message, response)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return "I'm having a small technical hiccup! 🤖⚡ Please try asking me something else, and I'll be right back to helping you! 😊"
+
+    def generate_intelligent_fallback(self, message, analysis):
+        """Generate intelligent fallback responses with better suggestions"""
+        message_lower = message.lower()
+        
+        # Handle follow-up queries when no previous context
+        follow_ups = ["name them", "tell me more", "more", "them", "details", "list"]
+        if any(phrase in message_lower for phrase in follow_ups):
+            return "I'd love to tell you more! 😊 But could you be more specific about what topic you're interested in? Try asking about:\n\n🧮 Math problems\n🌍 Countries and geography\n🐾 Animals and nature\n🔬 Science facts\n💻 Technology\n\nWhat catches your interest?"
+        
+        # Category-specific fallbacks
+        fallback_responses = {
+            'math': "I can help with math! 🧮 Try asking me:\n• Simple calculations like '2+2' or '15*4'\n• 'What is 25 divided by 5?'\n• Math facts like 'Tell me about pi'\n• 'What are prime numbers?'",
+            
+            'geography': "I love geography! 🌍 Ask me about:\n• 'Name some countries'\n• 'What's the largest ocean?'\n• 'Tell me about continents'\n• 'What's the highest mountain?'\n• Capital cities and country facts!",
+            
+            'animals': "Animals are amazing! 🐾 Try asking:\n• 'Wild animals'\n• 'Domestic animals' or 'pets'\n• 'Marine animals' or 'ocean animals'\n• 'What are the fastest animals?'\n• 'Tell me about the largest animals'\n• Fun animal facts!",
+            
+            'science': "Science is fascinating! 🔬 Ask me about:\n• 'What is gravity?'\n• 'How does photosynthesis work?'\n• 'Tell me about DNA'\n• 'What are atoms?'\n• 'Facts about the solar system'",
+            
+            'technology': "Technology is everywhere! 💻 Try asking:\n• 'What is AI?'\n• 'How does the internet work?'\n• 'Tell me about computers'\n• 'What is programming?'\n• 'Facts about smartphones'",
+            
+            'health': "Health matters! 💪 Ask me about:\n• 'What is good nutrition?'\n• 'Why is exercise important?'\n• 'How much sleep do I need?'\n• 'What are vitamins?'\n• Healthy living tips!"
+        }
+        
+        # Check for category-specific keywords
+        for category, keywords in {
+            'math': ['math', 'calculate', 'number', 'plus', 'minus', 'times', 'divide'],
+            'geography': ['country', 'place', 'geography', 'world', 'continent', 'capital'],
+            'animals': ['animal', 'pet', 'creature', 'wildlife', 'zoo'],
+            'science': ['science', 'physics', 'chemistry', 'biology', 'experiment'],
+            'technology': ['technology', 'computer', 'internet', 'phone', 'robot'],
+            'health': ['health', 'diet', 'exercise', 'sleep', 'nutrition', 'vitamin']
+        }.items():
+            if any(word in message_lower for word in keywords):
+                return fallback_responses[category]
+        
+        # General helpful fallback
+        return """I'm Ava, and I'd love to help you! 🤖✨ 
+
+Here are some things I'm great at:
+
+🧮 **Mathematics**: Basic calculations, math facts, problem solving
+🌍 **Geography**: Countries, capitals, continents, world facts  
+🐾 **Animals**: Wild animals, pets, marine animals, fastest/largest animals
+🔬 **Science**: Physics, biology, chemistry, space facts
+💻 **Technology**: AI, computers, internet, programming basics
+📚 **History**: Historical events, civilizations, inventions
+💪 **Health**: Nutrition, exercise, wellness tips
+
+Just ask me about anything that interests you! What would you like to explore? 😊"""
+
+# Initialize Ava AI
+ava_brain = AvaAIBrain()
+
+@app.route('/')
+def home():
+    """Enhanced home endpoint with better information"""
+    return jsonify({
+        "message": "🤖 Ava - Your Enhanced AI Assistant",
+        "status": "✅ Active and Ready",
+        "version": "3.0 Enhanced",
+        "creator": "👩‍💻 Akansha Madavi",
+        "capabilities": [
+            "🧮 Advanced Mathematics & Calculations",
+            "🌍 Geography & World Knowledge", 
+            "🐾 Animal Facts & Information",
+            "🔬 Science Concepts & Discoveries",
+            "💻 Technology Explanations",
+            "📚 Historical Information", 
+            "💪 Health & Wellness Tips",
+            "🎯 Natural Conversation & Learning"
+        ],
+        "features": [
+            "✨ Enhanced Natural Language Processing",
+            "🧠 Context-Aware Conversations", 
+            "📚 Comprehensive Knowledge Base",
+            "💾 Learning & Memory System",
+            "🎯 Intelligent Response Generation"
+        ],
+        "usage": {
+            "endpoint": "/api/chat",
+            "method": "POST",
+            "example": {"message": "Hello Ava!"}
+        },
+        "timestamp": datetime.now().isoformat()
+    })
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Enhanced chat endpoint with better error handling"""
+    start_time = time.time()
+    
+    try:
+        # Get and validate request data
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "error": "No JSON data provided",
+                "status": "❌ Error",
+                "help": "Please send JSON with 'message' field"
+            }), 400
+        
+        if 'message' not in data:
+            return jsonify({
+                "error": "Missing 'message' field",
+                "status": "❌ Error", 
+                "help": "JSON should contain: {'message': 'your question here'}"
+            }), 400
+        
+        user_message = data['message']
+        
+        if not user_message or not user_message.strip():
+            return jsonify({
+                "error": "Empty message",
+                "status": "❌ Error",
+                "help": "Please provide a non-empty message"
+            }), 400
+        
+        user_message = user_message.strip()
+        
+        # Log the incoming message
+        logger.info(f"📥 User: {user_message}")
+        
+        # Generate response using enhanced Ava AI
+        ai_response = ava_brain.generate_response(user_message)
+        
+        processing_time = time.time() - start_time
+        
+        # Prepare response
+        response_data = {
+            "response": ai_response,
+            "status": "✅ Success",
+            "processing_time": round(processing_time, 3),
+            "assistant": {
+                "name": "Ava",
+                "version": "3.0 Enhanced",
+                "creator": "Akansha Madavi"
+            },
+            "metadata": {
+                "timestamp": datetime.now().isoformat(),
+                "response_length": len(ai_response),
+                "has_context": len(ava_brain.conversation_context) > 0
+            }
+        }
+        
+        logger.info(f"✅ Ava responded in {processing_time:.3f}s: {ai_response[:100]}...")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"❌ Error in chat endpoint: {e}")
+        return jsonify({
+            "error": "Internal server error",
+            "status": "❌ Error",
+            "message": "Ava encountered a technical issue. Please try again! 🤖⚡",
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/ava/knowledge/add', methods=['POST'])
+def add_knowledge():
+    """Enhanced endpoint to add new knowledge"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['category', 'topic', 'content']
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            return jsonify({
+                "error": f"Missing required fields: {', '.join(missing_fields)}",
+                "status": "❌ Error",
+                "required_fields": required_fields
+            }), 400
+        
+        category = data['category'].lower()
+        topic = data['topic']
+        content = data['content']
+        
+        # Add to knowledge base
+        if category not in ava_brain.knowledge_base:
+            ava_brain.knowledge_base[category] = {}
+        
+        ava_brain.knowledge_base[category][topic] = content
+        
+        # Save to database
+        try:
+            with ava_brain.db_lock:
+                cursor = ava_brain.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO knowledge (topic, question, answer, confidence)
+                    VALUES (?, ?, ?, ?)
+                ''', (topic, f"{category}_{topic}", content, 1.0))
+                ava_brain.conn.commit()
+        except Exception as db_error:
+            logger.error(f"Database error: {db_error}")
+        
+        return jsonify({
+            "message": f"✅ Successfully added knowledge about '{topic}' to '{category}' category!",
+            "status": "✅ Success",
+            "data": {
+                "category": category,
+                "topic": topic,
+                "content_length": len(content)
+            },
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error adding knowledge: {e}")
+        return jsonify({
+            "error": "Could not add knowledge",
+            "status": "❌ Error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ava/stats', methods=['GET'])
+def ava_stats():
+    """Enhanced statistics endpoint"""
+    try:
+        total_topics = sum(len(category) if isinstance(category, dict) else 1 
+                          for category in ava_brain.knowledge_base.values())
+        
+        # Calculate conversation stats
+        conversation_count = len(ava_brain.conversation_context)
+        
+        stats = {
+            "assistant_info": {
+                "name": "Ava",
+                "version": "3.0 Enhanced", 
+                "creator": "Akansha Madavi",
+                "status": "✅ Active"
+            },
+            "knowledge_base": {
+                "categories": list(ava_brain.knowledge_base.keys()),
+                "total_categories": len(ava_brain.knowledge_base),
+                "total_topics": total_topics,
+                "category_breakdown": {
+                    category: len(topics) if isinstance(topics, dict) else 1
+                    for category, topics in ava_brain.knowledge_base.items()
+                }
+            },
+            "conversation_stats": {
+                "current_context_length": conversation_count,
+                "last_intent": ava_brain.last_intent,
+                "last_topic": ava_brain.last_topic
+            },
+            "capabilities": [
+                "🧮 Mathematical calculations and explanations",
+                "🌍 Geography and country information", 
+                "🐾 Animal facts and information",
+                "🔬 Science knowledge and concepts",
+                "💻 Technology explanations",
+                "📚 Historical facts and events",
+                "💪 Health and nutrition information",
+                "🎯 Context-aware conversations",
+                "📚 Expandable knowledge base"
+            ],
+            "features": [
+                "✨ Enhanced Natural Language Processing",
+                "🧠 Context Memory & Follow-up Questions",
+                "📊 Mathematical Expression Solving", 
+                "🎯 Intelligent Intent Recognition",
+                "💾 Persistent Learning Database",
+                "🔄 Dynamic Response Generation"
+            ]
+        }
+        
+        return jsonify({
+            "stats": stats,
+            "status": "✅ Success",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting Ava stats: {e}")
+        return jsonify({
+            "error": "Could not retrieve statistics",
+            "status": "❌ Error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ava/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        cursor = ava_brain.conn.cursor()
+        cursor.execute('SELECT 1')
+        db_status = "✅ Connected"
+    except:
+        db_status = "❌ Error"
+    
+    return jsonify({
+        "status": "✅ Healthy",
+        "assistant": "Ava v3.0 Enhanced",
+        "database": db_status,
+        "knowledge_categories": len(ava_brain.knowledge_base),
+        "uptime": "Active",
+        "timestamp": datetime.now().isoformat()
+    })
+
+@app.route('/api/ava/conversation/clear', methods=['POST'])
+def clear_conversation():
+    """Clear conversation context"""
+    try:
+        ava_brain.conversation_context.clear()
+        ava_brain.last_intent = None
+        ava_brain.last_topic = None
+        
+        return jsonify({
+            "message": "✅ Conversation context cleared successfully!",
+            "status": "✅ Success",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Could not clear conversation",
+            "status": "❌ Error"
+        }), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        "error": "Endpoint not found",
+        "status": "❌ 404 Not Found",
+        "available_endpoints": [
+            "GET  / - Home page",
+            "POST /api/chat - Chat with Ava",
+            "GET  /api/ava/stats - Get statistics", 
+            "GET  /api/ava/health - Health check",
+            "POST /api/ava/knowledge/add - Add knowledge",
+            "POST /api/ava/conversation/clear - Clear context"
+        ]
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        "error": "Internal server error",
+        "status": "❌ 500 Internal Error", 
+        "message": "Ava encountered an unexpected issue. Please try again!"
+    }), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    
+    print("\n" + "="*70)
+    print("🤖 AVA - ENHANCED AI ASSISTANT v3.0 FIXED")
+    print("="*70)
+    print("👩‍💻 Created by: Akansha Madavi")
+    print("✨ Enhanced Natural Language Processing")
+    print("🧮 Advanced Mathematical Calculations") 
+    print("🌍 Comprehensive Geography Knowledge")
+    print("🐾 Extensive Animal Information Database")
+    print("🔬 Rich Science & Technology Facts")
+    print("📚 Historical & Cultural Knowledge")
+    print("💪 Health & Wellness Information")
+    print("🧠 Context-Aware Conversations")
+    print("💾 Expandable Knowledge Base")
+    print("🎯 Intelligent Response System")
+    print("🔄 Learning & Memory Capabilities")
+    print(f"🚀 Starting Ava on http://localhost:{port}")
+    print("="*70)
+    print("💬 Ready to chat! Send POST requests to /api/chat")
+    print("📊 Check /api/ava/stats for detailed information")
+    print("🏥 Health check available at /api/ava/health")
+    print("="*70 + "\n")
+    
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=False
+        # debug=debug,
+        # threaded=True
+    )

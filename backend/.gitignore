@@ -1,0 +1,17 @@
+# Python venv
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local DB files
+*.db
+
+# Env
+.env
+.env.*
+
+# Logs
+*.log
